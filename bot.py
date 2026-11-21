@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from datetime import datetime, date, timedelta
 from typing import Optional
 
@@ -13,6 +14,7 @@ from aiogram.types import (
     ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiohttp import web
 
 from config import BOT_TOKEN, ADMIN_IDS, DAYS_AHEAD, BLOCK_DAYS_AHEAD, REMINDER_HOURS, TIMEZONE
 from services import SERVICES, get_service, get_services_by_category
@@ -457,17 +459,17 @@ async def admin_month_overview(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
         return
     today = date.today()
-    # Берём текущий и следующий месяц
+    # Берём текущий и два следующих месяца
     months = []
     y, m = today.year, today.month
-    for _ in range(2):
+    for _ in range(3):
         months.append((y, m))
         m += 1
         if m > 12:
             m = 1
             y += 1
 
-    text = "📊 Загрузка на ближайшие 2 месяца\n\n"
+    text = "📊 Загрузка на ближайшие 3 месяца\n\n"
     builder = InlineKeyboardBuilder()
 
     for year, month in months:
@@ -912,7 +914,7 @@ async def admin_manual_username(message: Message, state: FSMContext):
 async def admin_cancel_list(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
         return
-        # Показываем все записи в пределах периода записи клиентов
+    # Показываем все записи в пределах периода записи клиентов
     from datetime import timedelta
     end_date = (date.today() + timedelta(days=DAYS_AHEAD)).isoformat()
     from database import get_connection
@@ -1018,9 +1020,24 @@ async def reminder_loop():
         await asyncio.sleep(1800)  # каждые 30 минут
 
 # ===== Startup =====
+async def health(request):
+    return web.Response(text="ok")
+
+async def start_web():
+    app = web.Application()
+    app.router.add_get("/", health)
+    app.router.add_get("/health", health)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    logger.info(f"Health server started on port {port}")
+
 async def main():
     dp.include_router(router)
     asyncio.create_task(reminder_loop())
+    asyncio.create_task(start_web())
     logger.info("Бот запущен")
     await dp.start_polling(bot)
 
