@@ -912,14 +912,19 @@ async def admin_manual_username(message: Message, state: FSMContext):
 async def admin_cancel_list(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
         return
-    # Показываем ближайшие записи
+        # Показываем все записи в пределах периода записи клиентов
+    from datetime import timedelta
+    end_date = (date.today() + timedelta(days=DAYS_AHEAD)).isoformat()
     from database import get_connection
     conn = get_connection()
     c = conn.cursor()
     c.execute("""
-        SELECT * FROM bookings WHERE status = 'confirmed' AND booking_date >= date('now')
-        ORDER BY booking_date, start_time LIMIT 15
-    """)
+        SELECT * FROM bookings 
+        WHERE status = 'confirmed' 
+          AND booking_date >= date('now') 
+          AND booking_date <= ?
+        ORDER BY booking_date, start_time
+    """, (end_date,))
     bookings = [dict(r) for r in c.fetchall()]
     conn.close()
     if not bookings:
